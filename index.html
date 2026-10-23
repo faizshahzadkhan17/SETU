@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SETU</title>
+<meta name="description" content="A genetic algorithm evolves truss bridges, a structural solver checks every one, and fuzzy logic judges how safe each design is. Then a truck drives across.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<canvas id="scene" aria-label="3D river valley with the bridge"></canvas>
+
+<header class="top card">
+  <div class="brand"><b>SETU</b><span>सेतु</span><em>bridges that evolve</em></div>
+  <nav class="tabs" aria-label="Mode">
+    <button data-mode="design" class="on">Design</button>
+    <button data-mode="test">Load test</button>
+    <button data-mode="brain">Safety officer</button>
+  </nav>
+  <div class="money" id="moneyTop"></div>
+</header>
+
+<!-- Site + controls -->
+<aside class="panel left card" id="sitePanel">
+  <h2>The site</h2>
+  <label class="field"><span>River width (span) <b id="spanVal">30 m</b></span>
+    <input type="range" id="span" min="12" max="50" step="2" value="30"></label>
+  <div class="field"><span>What crosses it</span>
+    <div class="choices" id="loadChoices">
+      <button data-load="people"><i>🚶</i>People<small>footbridge</small></button>
+      <button data-load="car"><i>🛺</i>Cars, autos<small>village road</small></button>
+      <button data-load="truck" class="on"><i>🚚</i>Loaded truck<small>district road</small></button>
+    </div>
+  </div>
+  <div class="field"><span>Built from</span>
+    <div class="choices" id="matChoices">
+      <button data-mat="steel" class="on"><i class="sw steel"></i>Steel<small>₹95/kg</small></button>
+      <button data-mat="timber"><i class="sw timber"></i>Timber<small>₹110/kg</small></button>
+      <button data-mat="bamboo"><i class="sw bamboo"></i>Bamboo<small>₹30/kg</small></button>
+    </div>
+  </div>
+  <button class="btn go" id="btnEvolve">🧬 Evolve a bridge</button>
+  <div class="row2">
+    <button class="btn" id="btnMine" title="Drag the top joints and click members in the drawing below">✏️ Design my own</button>
+    <label class="tog"><input type="checkbox" id="useFuzzy" checked><span class="sw2"></span>Fuzzy safety</label>
+  </div>
+  <canvas id="evoChart" width="300" height="80"></canvas>
+  <p class="tiny" id="evoNote">Each generation: 60 bridges are analysed with the stiffness method; the cheapest safe ones breed.</p>
+</aside>
+
+<!-- Result -->
+<aside class="panel right card" id="resultPanel">
+  <h2>Design <span class="pill" id="designName">—</span></h2>
+  <div class="big">
+    <div><b id="costVal">—</b><span>material cost</span></div>
+    <div><b id="massVal">—</b><span>weight of one side</span></div>
+  </div>
+  <div class="gauge-wrap">
+    <canvas id="gauge" width="260" height="140"></canvas>
+    <div class="gauge-txt"><b id="safetyVal">—</b><span id="safetyWord">fuzzy safety</span></div>
+  </div>
+  <div class="checks" id="checks"></div>
+  <h3>Same site, other designs</h3>
+  <div class="compare" id="compare"></div>
+</aside>
+
+<!-- Load test controls -->
+<aside class="panel right card" id="testPanel" hidden>
+  <h2>Load test <span class="pill" id="testName">—</span></h2>
+  <label class="field"><span>Bridge to test</span><select id="testDesign"></select></label>
+  <label class="field"><span>Load <b id="multVal">1.0× design load</b></span>
+    <input type="range" id="mult" min="1" max="4" step="0.1" value="1"></label>
+  <button class="btn go" id="btnDrive">▶ Drive across</button>
+  <button class="btn" id="btnBreak">💥 Find its breaking point</button>
+  <div class="meter-row"><span>Most stressed member</span><b id="liveUtil">—</b></div>
+  <div class="bar"><span id="liveBar"></span></div>
+  <div class="meter-row"><span>Sag at mid-span</span><b id="liveSag">—</b></div>
+  <p class="tiny">Colours show how hard each member is working: blue relaxed, green fine, yellow busy, red near breaking. Sag is drawn 25× larger so you can see it.</p>
+  <div class="verdict" id="verdict" hidden></div>
+</aside>
+
+<!-- Fuzzy brain -->
+<section class="brain card" id="brain" hidden>
+  <h2>The fuzzy safety officer <small>how it judges a design, the way an experienced engineer would</small></h2>
+  <div class="brain-grid">
+    <div class="box">
+      <h4>Membership functions</h4>
+      <div class="pick" id="mfPick"></div>
+      <canvas id="mfChart" width="360" height="150"></canvas>
+    </div>
+    <div class="box">
+      <h4>Verdict for the current design</h4>
+      <canvas id="outChart" width="360" height="120"></canvas>
+      <div class="tiny mono" id="fzIn"></div>
+    </div>
+    <div class="box span2">
+      <h4>Rules <span class="tiny">click a rule to switch it off, then evolve again</span></h4>
+      <div class="rules" id="rules"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Elevation drawing -->
+<footer class="draw card">
+  <div class="draw-head">
+    <h2>Engineer's drawing <small id="drawNote">one side of the bridge · line thickness = member size</small></h2>
+    <div class="legend"><span><i style="background:#2f6bff"></i>pulled (tension)</span><span><i style="background:#ff4d3d"></i>squeezed (compression)</span></div>
+  </div>
+  <canvas id="elev"></canvas>
+</footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="js/core.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
