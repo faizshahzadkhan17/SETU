@@ -18,6 +18,24 @@
   };
   const world = new window.SetuWorld($('scene'));
 
+  // Day / night. Canvas drawings read their colours from here.
+  const PALS = {
+    day: { ink: '#14233b', ink2: '#44546e', muted: '#7a879c', bank: '#c9e9b8', river: '#bfe6fb', hint: '#b37800', faint: 'rgba(20,35,59,0.25)' },
+    night: { ink: '#eef3ff', ink2: '#c3cde3', muted: '#93a1bd', bank: '#2c4a3a', river: '#1d3b63', hint: '#ffd75e', faint: 'rgba(230,238,255,0.28)' },
+  };
+  let theme = 'day';
+  try { if (localStorage.getItem('setu-theme') === 'night') theme = 'night'; } catch (e) { /* storage blocked */ }
+  function PAL() { return PALS[theme]; }
+  function applyTheme(t, animate) {
+    theme = t;
+    document.documentElement.dataset.theme = t;
+    $('btnTheme').textContent = t === 'night' ? '☀️' : '🌙';
+    $('btnTheme').setAttribute('aria-label', t === 'night' ? 'Switch to day' : 'Switch to night');
+    world.setNight(t === 'night', animate);
+    try { localStorage.setItem('setu-theme', t); } catch (e) { /* storage blocked */ }
+    if (S.prob) { drawElevation(); renderResult(); drawEvo(); if (S.mode === 'brain') renderBrain(); }
+  }
+
   function toast(html, ms) {
     const el = document.createElement('div');
     el.className = 'toast'; el.innerHTML = html;
@@ -137,9 +155,9 @@
       g.arc(cx, cy, r, Math.PI + (a / 100) * Math.PI, Math.PI + (b / 100) * Math.PI); g.stroke();
     }
     const ang = Math.PI + (Math.max(0, Math.min(100, v)) / 100) * Math.PI;
-    g.strokeStyle = '#14233b'; g.lineWidth = 4; g.lineCap = 'round';
+    g.strokeStyle = PAL().ink; g.lineWidth = 4; g.lineCap = 'round';
     g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(ang) * (r - 6), cy + Math.sin(ang) * (r - 6)); g.stroke();
-    g.fillStyle = '#14233b'; g.beginPath(); g.arc(cx, cy, 6, 0, 7); g.fill();
+    g.fillStyle = PAL().ink; g.beginPath(); g.arc(cx, cy, 6, 0, 7); g.fill();
   }
 
   // ------------------------------------------------------------------
@@ -159,10 +177,10 @@
     const P = (x, y) => [ox + x * sc, oy - y * sc];
     EL = { P, sc, ox, oy, res };
     // banks and water
-    g.fillStyle = '#c9e9b8'; g.fillRect(0, oy, ox, padB); g.fillRect(ox + prob.span * sc, oy, w, padB);
-    g.fillStyle = '#bfe6fb'; g.fillRect(ox, oy + 8, prob.span * sc, padB - 8);
+    g.fillStyle = PAL().bank; g.fillRect(0, oy, ox, padB); g.fillRect(ox + prob.span * sc, oy, w, padB);
+    g.fillStyle = PAL().river; g.fillRect(ox, oy + 8, prob.span * sc, padB - 8);
     // dimension line
-    g.strokeStyle = '#7a879c'; g.fillStyle = '#7a879c'; g.lineWidth = 1; g.font = '600 11px "JetBrains Mono", monospace'; g.textAlign = 'center';
+    g.strokeStyle = PAL().muted; g.fillStyle = PAL().muted; g.lineWidth = 1; g.font = '600 11px "JetBrains Mono", monospace'; g.textAlign = 'center';
     g.beginPath(); g.moveTo(ox, oy + 20); g.lineTo(ox + prob.span * sc, oy + 20); g.stroke();
     g.fillText(`${prob.span} m · ${prob.n} panels of ${prob.panel.toFixed(1)} m`, ox + (prob.span * sc) / 2, oy + 16);
     if (res.mechanism && !res.members.length) return;
@@ -171,7 +189,7 @@
     const maxD = Math.max(...prob.mat.sections.map((s) => s.D));
     // all candidate members faintly while editing
     if (S.editing && S.current === 'mine') {
-      g.setLineDash([4, 5]); g.strokeStyle = 'rgba(20,35,59,0.25)'; g.lineWidth = 1;
+      g.setLineDash([4, 5]); g.strokeStyle = PAL().faint; g.lineWidth = 1;
       for (const cnd of prob.cand) {
         const [x1, y1] = P(res.xy[cnd.a * 2], res.xy[cnd.a * 2 + 1]), [x2, y2] = P(res.xy[cnd.b * 2], res.xy[cnd.b * 2 + 1]);
         g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
@@ -191,20 +209,20 @@
     for (let i = 0; i < prob.nNodes; i++) {
       const top = i > prob.n;
       const [x, y] = P(res.xy[i * 2], res.xy[i * 2 + 1]);
-      g.fillStyle = top && S.editing && S.current === 'mine' ? '#ffc21a' : '#14233b';
+      g.fillStyle = top && S.editing && S.current === 'mine' ? '#ffc21a' : PAL().ink;
       g.beginPath(); g.arc(x, y, top && S.editing && S.current === 'mine' ? 6 : 3.2, 0, 7); g.fill();
     }
     // supports
     const [sx0, sy0] = P(0, 0), [sx1, sy1] = P(prob.span, 0);
-    g.fillStyle = '#14233b';
+    g.fillStyle = PAL().ink;
     g.beginPath(); g.moveTo(sx0, sy0); g.lineTo(sx0 - 8, sy0 + 12); g.lineTo(sx0 + 8, sy0 + 12); g.closePath(); g.fill();
     g.beginPath(); g.arc(sx1 - 5, sy1 + 9, 3.5, 0, 7); g.arc(sx1 + 5, sy1 + 9, 3.5, 0, 7); g.fill();
     // labels
-    g.textAlign = 'left'; g.fillStyle = '#44546e'; g.font = '600 11px Figtree, sans-serif';
+    g.textAlign = 'left'; g.fillStyle = PAL().ink2; g.font = '600 11px Figtree, sans-serif';
     const maxH = Math.max(...Array.from({ length: prob.n - 1 }, (_, i) => res.xy[(prob.n + 1 + i) * 2 + 1]));
     g.fillText(`depth ${maxH.toFixed(1)} m`, 8, 16);
     g.fillText(`${res.members.length} members`, 8, 32);
-    if (S.editing && S.current === 'mine') { g.fillStyle = '#b37800'; g.fillText('drag the yellow joints · click a dashed line to add a member, a solid one to remove it', 8, 48); }
+    if (S.editing && S.current === 'mine') { g.fillStyle = PAL().hint; g.fillText('drag the yellow joints · click a dashed line to add a member, a solid one to remove it', 8, 48); }
   }
 
   function elevHit(ev) {
@@ -299,13 +317,13 @@
     const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
     const hist = S.run ? S.run.ga.history : (S.lastHist || []);
     if (S.run) S.lastHist = hist;
-    if (hist.length < 2) { g.fillStyle = '#7a879c'; g.font = '600 11px Figtree'; g.fillText('Cost will drop here as the bridge evolves', 4, h / 2); return; }
+    if (hist.length < 2) { g.fillStyle = PAL().muted; g.font = '600 11px Figtree'; g.fillText('Cost will drop here as the bridge evolves', 4, h / 2); return; }
     const v = hist.map((x) => x.cost * 2), mn = Math.min(...v), mx = Math.max(...v);
     const Y = (q) => h - 8 - ((q - mn) / Math.max(1, mx - mn)) * (h - 22), Xp = (i) => (i / (v.length - 1)) * (w - 4) + 2;
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,194,26,0.5)'); gr.addColorStop(1, 'rgba(255,194,26,0)');
     g.beginPath(); g.moveTo(Xp(0), h); v.forEach((q, i) => g.lineTo(Xp(i), Y(q))); g.lineTo(Xp(v.length - 1), h); g.fillStyle = gr; g.fill();
     g.beginPath(); v.forEach((q, i) => (i ? g.lineTo(Xp(i), Y(q)) : g.moveTo(Xp(i), Y(q)))); g.strokeStyle = '#e09a00'; g.lineWidth = 2.5; g.stroke();
-    g.fillStyle = '#14233b'; g.font = '700 11px "JetBrains Mono"'; g.textAlign = 'right';
+    g.fillStyle = PAL().ink; g.font = '700 11px "JetBrains Mono"'; g.textAlign = 'right';
     g.fillText(`${rs(v[0])} → ${rs(v[v.length - 1])}`, w - 2, 12);
   }
 
@@ -423,8 +441,8 @@
       });
       if (x && S.mfVar !== '__out') {
         const xv = Xp(Math.min(max, x[S.mfVar]));
-        g.strokeStyle = '#14233b'; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(xv, 10); g.lineTo(xv, h - 18); g.stroke(); g.setLineDash([]);
-        g.fillStyle = '#14233b'; g.textAlign = 'center'; g.font = '700 11px "JetBrains Mono"'; g.fillText('this design ' + x[S.mfVar].toFixed(2), xv, h - 4);
+        g.strokeStyle = PAL().ink; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(xv, 10); g.lineTo(xv, h - 18); g.stroke(); g.setLineDash([]);
+        g.fillStyle = PAL().ink; g.textAlign = 'center'; g.font = '700 11px "JetBrains Mono"'; g.fillText('this design ' + x[S.mfVar].toFixed(2), xv, h - 4);
       }
     }
     const ex = x ? X.fuzzyEval(fz, x, true) : null;
@@ -436,12 +454,12 @@
         for (let i = 0; i <= 100; i++) g.lineTo(Xp(i / 100), Y(ex.agg[i]));
         g.lineTo(Xp(1), Y(0)); g.closePath();
         const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#ff4d3d'); gr.addColorStop(0.45, '#ffc21a'); gr.addColorStop(1, '#21b573');
-        g.globalAlpha = 0.55; g.fillStyle = gr; g.fill(); g.globalAlpha = 1; g.strokeStyle = '#14233b'; g.lineWidth = 1.5; g.stroke();
+        g.globalAlpha = 0.55; g.fillStyle = gr; g.fill(); g.globalAlpha = 1; g.strokeStyle = PAL().ink; g.lineWidth = 1.5; g.stroke();
         const cx = Xp(ex.value / 100);
         g.setLineDash([4, 3]); g.beginPath(); g.moveTo(cx, 6); g.lineTo(cx, h - 18); g.stroke(); g.setLineDash([]);
-        g.fillStyle = '#14233b'; g.font = '800 13px "Bricolage Grotesque"'; g.textAlign = cx > w - 80 ? 'right' : 'left';
+        g.fillStyle = PAL().ink; g.font = '800 13px "Bricolage Grotesque"'; g.textAlign = cx > w - 80 ? 'right' : 'left';
         g.fillText(`safety ${ex.value.toFixed(0)}`, cx + (cx > w - 80 ? -6 : 6), 18);
-        g.font = '600 10.5px Figtree'; g.fillStyle = '#7a879c'; g.textAlign = 'left'; g.fillText('unsafe', 4, h - 4); g.textAlign = 'right'; g.fillText('excellent', w - 4, h - 4);
+        g.font = '600 10.5px Figtree'; g.fillStyle = PAL().muted; g.textAlign = 'left'; g.fillText('unsafe', 4, h - 4); g.textAlign = 'right'; g.fillText('excellent', w - 4, h - 4);
       }
       $('fzIn').textContent = x ? Object.entries(x).map(([k, v]) => `${fz.inputs[k].label}: ${v.toFixed(2)}`).join(' · ') : 'This design is a mechanism; no rating.';
     }
@@ -498,6 +516,7 @@
     $('testDesign').addEventListener('change', () => { stopTest(); showDesign($('testDesign').value); });
     window.addEventListener('resize', () => { drawElevation(); renderResult(); drawEvo(); });
     bindElevation();
+    $('btnTheme').addEventListener('click', () => applyTheme(theme === 'night' ? 'day' : 'night', true));
   }
 
   let last = performance.now();
@@ -513,6 +532,7 @@
 
   bind();
   setSite();
+  applyTheme(theme, false);
   drawEvo();
   requestAnimationFrame(frame);
   setTimeout(() => toast('A 30 m river, a loaded truck, steel. Press <b>🧬 Evolve a bridge</b> and watch it find a cheaper design than the textbook ones.', 6500), 600);

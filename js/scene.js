@@ -52,7 +52,8 @@
     this.controls.maxPolarAngle = Math.PI * 0.49; this.controls.minDistance = 12; this.controls.maxDistance = 180;
     this.controls.target.set(0, -1, 0);
 
-    this.scene.add(new T.HemisphereLight(0xdff2ff, 0x8a7a5a, 0.75));
+    this.hemi = new T.HemisphereLight(0xdff2ff, 0x8a7a5a, 0.75);
+    this.scene.add(this.hemi);
     const sun = this.sun = new T.DirectionalLight(0xfff1d6, 1.25);
     sun.position.set(-40, 70, 45);
     sun.castShadow = true;
@@ -62,6 +63,26 @@
     this.scene.add(sun);
 
     this.world = new T.Group(); this.scene.add(this.world);
+    // night: lamp lights on the banks, lights along the deck, a headlight
+    this.night = false; this.nightK = 0;
+    this.lampLights = [];
+    for (let i = 0; i < 4; i++) { const L = new T.PointLight(0xffb85c, 0, 20, 2); this.scene.add(L); this.lampLights.push(L); }
+    this.deckLights = [];
+    for (let i = 0; i < 3; i++) { const L = new T.PointLight(0xffd99a, 0, 16, 2); this.scene.add(L); this.deckLights.push(L); }
+    this.headLight = new T.PointLight(0xfff4d0, 0, 22, 1.4); this.scene.add(this.headLight);
+    // stars and the moon
+    const sp = new Float32Array(900 * 3);
+    for (let i = 0; i < 900; i++) {
+      const th = Math.random() * Math.PI * 2, ph = Math.random() * Math.PI * 0.42, r = 260;
+      sp.set([r * Math.cos(th) * Math.sin(ph), r * Math.cos(ph) * 0.9 + 10, r * Math.sin(th) * Math.sin(ph)], i * 3);
+    }
+    const sg = new T.BufferGeometry(); sg.setAttribute('position', new T.BufferAttribute(sp, 3));
+    this.stars = new T.Points(sg, new T.PointsMaterial({ color: 0xffffff, size: 1.4, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+    this.scene.add(this.stars);
+    this.moon = new T.Mesh(new T.SphereGeometry(6, 24, 16), new T.MeshBasicMaterial({ color: 0xfff6d8, transparent: true, opacity: 0, fog: false }));
+    this.moon.position.set(-90, 95, -170);
+    this.scene.add(this.moon);
+    this.glowMats = [];          // lamp heads, windows, bulbs: glow only at night
     this.bridge = new T.Group(); this.scene.add(this.bridge);
     this.vehicle = null;
     this.clouds = new T.Group(); this.scene.add(this.clouds);
@@ -181,8 +202,26 @@
     const wall = new T.Mesh(new T.BoxGeometry(4, 2.6, 3.4), flat(0xf3e2c3)); wall.position.y = 1.3; wall.castShadow = true; hut.add(wall);
     const roof = new T.Mesh(new T.ConeGeometry(3.4, 2, 4), flat(0xd8573b)); roof.position.y = 3.6; roof.rotation.y = Math.PI / 4; roof.castShadow = true; hut.add(roof);
     const door = new T.Mesh(new T.BoxGeometry(0.9, 1.6, 0.05), flat(0x7a4b2a)); door.position.set(0, 0.8, 1.72); hut.add(door);
+    const winMat = new T.MeshStandardMaterial({ color: 0x3a3020, emissive: 0xffb84d, emissiveIntensity: 0 });
+    this.glowMats.push(winMat);
+    for (const z of [-0.9, 0.9]) { const wdw = new T.Mesh(new T.BoxGeometry(0.06, 0.7, 0.6), winMat); wdw.position.set(2.02, 1.5, z); hut.add(wdw); }
     hut.position.set(half + 10, 0, -9); hut.rotation.y = -0.4;
     g.add(hut);
+    // street lamps at the four corners of the bridge
+    this.glowMats = this.glowMats.filter((m) => m === winMat);
+    const lampHead = new T.MeshStandardMaterial({ color: 0xfff1c9, emissive: 0xffc56b, emissiveIntensity: 0 });
+    this.glowMats.push(lampHead);
+    const poleMat = flat(0x3b4352, { roughness: 0.6 });
+    let li = 0;
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const lamp = new T.Group();
+      const pole = new T.Mesh(new T.CylinderGeometry(0.09, 0.12, 5, 6), poleMat); pole.position.y = 2.5; pole.castShadow = true; lamp.add(pole);
+      const arm = new T.Mesh(new T.BoxGeometry(0.1, 0.1, 1.1), poleMat); arm.position.set(0, 4.95, -sz * 0.5); lamp.add(arm);
+      const head = new T.Mesh(new T.CylinderGeometry(0.28, 0.16, 0.3, 8), lampHead); head.position.set(0, 4.85, -sz * 1.0); lamp.add(head);
+      lamp.position.set(sx * (half + 2.2), 0, sz * (W / 2 + 0.9));
+      g.add(lamp);
+      this.lampLights[li++].position.set(sx * (half + 2.2), 4.6, sz * (W / 2 - 0.1));
+    }
     // camera framing
     const d = Math.max(36, span * 1.35);
     this.home = new T.Vector3(d * 0.55, d * 0.42 + 4, d * 0.95);
@@ -214,7 +253,7 @@
       const [x1, y1] = pos(m.a), [x2, y2] = pos(m.b);
       const r = Math.max(0.05, Math.min(0.32, (m.D / 1000) * (matKey === 'steel' ? 1.3 : 0.9)));
       const col = view.util ? utilColor(view.util[j]) : new T.Color(0x9aa4b5);
-      const mat = new T.MeshStandardMaterial({ color: col, roughness: matKey === 'steel' ? 0.35 : 0.8, metalness: matKey === 'steel' ? 0.35 : 0, flatShading: true, emissive: col, emissiveIntensity: view.util && view.util[j] > 1 ? 0.6 : 0.08 });
+      const mat = new T.MeshStandardMaterial({ color: col, roughness: matKey === 'steel' ? 0.35 : 0.8, metalness: matKey === 'steel' ? 0.35 : 0, flatShading: true, emissive: col, emissiveIntensity: view.util && view.util[j] > 1 ? 0.6 : 0.08 + 0.32 * this.nightK });
       for (const z of [-W / 2, W / 2]) {
         const c = cylinderBetween(new T.Vector3(x1, y1, z), new T.Vector3(x2, y2, z), r, mat);
         c.userData.member = j;
@@ -245,6 +284,30 @@
         mk.position.set((x1 + x2) / 2, (y1 + y2) / 2 + 0.2, 0); mk.rotation.z = slab.rotation.z; g.add(mk);
       }
     }
+    // string lights along the top chord and the deck edges
+    const bulbMat = new T.MeshBasicMaterial({ color: 0xffd48a, transparent: true, opacity: this.nightK, fog: false });
+    this.bulbMat = bulbMat;
+    view.members.forEach((m) => {
+      const top = m.a > n || m.b > n;
+      if (!top) return;
+      const [x1, y1] = pos(m.a), [x2, y2] = pos(m.b);
+      if (!(m.a > n && m.b > n) && Math.abs(y2 - y1) < 0.5) return;
+      const steps = Math.max(2, Math.round(Math.hypot(x2 - x1, y2 - y1) / 1.2));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        if (!(m.a > n && m.b > n) && t > 0) continue;  // only joints of non-top members
+        for (const z of [-W / 2, W / 2]) {
+          const b = new T.Mesh(new T.SphereGeometry(0.15, 6, 4), bulbMat);
+          b.position.set(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t + 0.22, z);
+          g.add(b);
+        }
+      }
+    });
+    for (let i = 0; i <= n; i++) {
+      const [x, y] = pos(i);
+      for (const z of [-W / 2 - 0.15, W / 2 + 0.15]) { const b = new T.Mesh(new T.SphereGeometry(0.17, 6, 4), bulbMat); b.position.set(x, y + 0.25, z); g.add(b); }
+    }
+    this.deckLights.forEach((L, k) => { const [x, y] = pos(Math.round(((k + 1) / 4) * n)); L.position.set(x, y + 2.5, 0); });
     this.deckY = (x) => {          // deck height at bridge coordinate x (0..span)
       const f = Math.max(0, Math.min(n - 0.0001, (x / this.span) * n)), i = Math.floor(f), t = f - i;
       return pos(i)[1] * (1 - t) + pos(i + 1)[1] * t + 0.2;
@@ -261,6 +324,7 @@
     const win = new T.Mesh(new T.BoxGeometry(0.05, 0.9, 2.0), glass); win.position.set(0.02, 2.2, 0); g.add(win);
     const box = new T.Mesh(new T.BoxGeometry(5.6, 2.8, 2.5), cargo); box.position.set(-5.2, 1.9, 0); g.add(box);
     const stripe = new T.Mesh(new T.BoxGeometry(5.62, 0.35, 2.52), flat(0xffffff)); stripe.position.set(-5.2, 1.4, 0); g.add(stripe);
+    for (const z of [-0.8, 0.8]) { const hl = new T.Mesh(new T.BoxGeometry(0.08, 0.3, 0.45), new T.MeshStandardMaterial({ color: 0xfff8e0, emissive: 0xfff2c0, emissiveIntensity: 0 })); hl.position.set(0.04, 1.0, z); hl.userData.headlight = true; g.add(hl); }
     for (const x of [-0.9, -4.4, -5.7]) for (const z of [-1.1, 1.1]) {
       const w = new T.Mesh(new T.CylinderGeometry(0.55, 0.55, 0.4, 12), dark); w.rotation.x = Math.PI / 2; w.position.set(x, 0.55, z); g.add(w);
     }
@@ -273,6 +337,7 @@
     const body = new T.Mesh(new T.BoxGeometry(2.6, 1.0, 1.4), green); body.position.set(-1.3, 0.85, 0); g.add(body);
     const hood = new T.Mesh(new T.BoxGeometry(2.4, 0.15, 1.5), yellow); hood.position.set(-1.4, 2.15, 0); g.add(hood);
     for (const z of [-0.65, 0.65]) { const p = new T.Mesh(new T.BoxGeometry(0.1, 1.1, 0.1), dark); p.position.set(-0.4, 1.6, z); g.add(p); const q = p.clone(); q.position.x = -2.5; g.add(q); }
+    const hl = new T.Mesh(new T.SphereGeometry(0.16, 8, 6), new T.MeshStandardMaterial({ color: 0xfff8e0, emissive: 0xfff2c0, emissiveIntensity: 0 })); hl.position.set(0.02, 1.1, 0); hl.userData.headlight = true; g.add(hl);
     for (const [x, z] of [[-0.1, 0], [-2.4, -0.6], [-2.4, 0.6]]) { const w = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, 0.25, 10), dark); w.rotation.x = Math.PI / 2; w.position.set(x, 0.35, z); g.add(w); }
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     return g;
@@ -297,6 +362,7 @@
     this.vehicle = type === 'truck' ? truckModel() : type === 'car' ? autoModel() : crowdModel(rnd(4));
     this.vehicle.userData.type = type;
     this.vehicle.visible = false;
+    this.vehicle.traverse((o) => { if (o.userData && o.userData.headlight) this.glowMats.push(o.material); });
     this.scene.add(this.vehicle);
   };
   // x = front position along the bridge (m from the left support)
@@ -316,6 +382,7 @@
     } else {
       const y = x > 0 && x < this.span && this.deckY ? this.deckY(Math.min(this.span, Math.max(0, x - 1))) : 0.12;
       v.position.set(x - half, y, v.userData.type === 'truck' ? -this.deckW * 0.18 : -this.deckW * 0.2);
+      this.headLight.position.set(v.position.x + 3, y + 1.4, v.position.z);
     }
   };
 
@@ -335,6 +402,35 @@
     }
     this.collapseState = { L, R, t: 0, xf, veh: this.vehicle, vy: 0, splashed: false };
   };
+  // ------------------------------------------------------------------
+  // Day / night
+  // ------------------------------------------------------------------
+  World.prototype.setNight = function (on, animate) {
+    this.night = on;
+    if (!animate) { this.nightK = on ? 1 : 0; this.applyNight(); }
+  };
+  World.prototype.applyNight = function () {
+    const k = this.nightK, mix = (a, b) => a + (b - a) * k;
+    const lerpC = (a, b) => new T.Color(a).lerp(new T.Color(b), k);
+    this.hemi.intensity = mix(0.75, 0.38);
+    this.hemi.color.copy(lerpC(0xdff2ff, 0x7f97d8));
+    this.hemi.groundColor.copy(lerpC(0x8a7a5a, 0x2a3150));
+    this.sun.intensity = mix(1.25, 0.32);
+    this.sun.color.copy(lerpC(0xfff1d6, 0xb9ccff));
+    this.sun.position.set(mix(-40, -60), mix(70, 80), mix(45, -60));
+    this.scene.fog.color.copy(lerpC(0xdff1ff, 0x0d1733));
+    this.renderer.toneMappingExposure = mix(1.05, 1.0);
+    if (this.water) { this.water.material.color.copy(lerpC(0x39b5f0, 0x1c4f86)); this.water.material.roughness = mix(0.25, 0.5); }
+    this.stars.material.opacity = k * 0.9;
+    this.moon.material.opacity = k;
+    this.lampLights.forEach((L) => { L.intensity = 1.4 * k; });
+    this.deckLights.forEach((L) => { L.intensity = 0.8 * k; });
+    this.headLight.intensity = this.vehicle && this.vehicle.visible ? 2.5 * k : 0;
+    this.glowMats.forEach((m) => { m.emissiveIntensity = 1.6 * k; });
+    if (this.bulbMat) this.bulbMat.opacity = k;
+    this.clouds.children.forEach((c) => c.children.forEach((p) => { p.material.color.copy(lerpC(0xffffff, 0x4a5880)); }));
+  };
+
   World.prototype.resetCollapse = function () {
     const c = this.collapseState;
     if (!c) return;
@@ -363,6 +459,9 @@
       this.water.geometry.computeVertexNormals();
     }
     this.clouds.children.forEach((c) => { c.position.x += c.userData.v * dt; if (c.position.x > 110) c.position.x = -110; });
+    const target = this.night ? 1 : 0;
+    if (Math.abs(this.nightK - target) > 0.001) { this.nightK += Math.sign(target - this.nightK) * Math.min(Math.abs(target - this.nightK), dt * 1.5); this.applyNight(); }
+    else if (this.night) this.headLight.intensity = this.vehicle && this.vehicle.visible ? 2.5 : 0;
     // collapse animation
     const c = this.collapseState;
     if (c) {
